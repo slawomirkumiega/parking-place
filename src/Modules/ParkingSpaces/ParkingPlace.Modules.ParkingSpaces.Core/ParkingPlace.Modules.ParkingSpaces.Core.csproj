@@ -1,0 +1,18 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Folder Include="Data\Migrations\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Clients\ParkingPlace.Modules.Clients.Shared\ParkingPlace.Modules.Clients.Shared.csproj" />
+    <ProjectReference Include="..\ParkingPlace.Modules.ParkingSpaces.Shared\ParkingPlace.Modules.ParkingSpaces.Shared.csproj" />
+  </ItemGroup>
+
+</Project>
