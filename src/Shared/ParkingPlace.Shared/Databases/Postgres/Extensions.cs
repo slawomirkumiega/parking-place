@@ -1,6 +1,8 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using ParkingPlace.Shared.Repository;
+using static ParkingPlace.Shared.Repository.IRepository;
 
 namespace ParkingPlace.Shared.Databases.Postgres
 {
@@ -23,6 +25,14 @@ namespace ParkingPlace.Shared.Databases.Postgres
             var configuration = services.BuildServiceProvider().GetRequiredService<IConfiguration>();
             var connectionString = configuration.GetConnectionString(ConnectionName);
             services.AddDbContext<T>(x => x.UseNpgsql(connectionString));
+
+            return services;
+        }
+
+        public static IServiceCollection AddUnitOfWork<T>(this IServiceCollection services)
+        {
+            services.AddScoped(typeof(IUnitOfWork<>), typeof(UnitOfWork<>));
+            services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 
             return services;
         }

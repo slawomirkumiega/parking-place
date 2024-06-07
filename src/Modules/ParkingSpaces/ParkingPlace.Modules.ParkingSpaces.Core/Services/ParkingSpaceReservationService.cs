@@ -3,7 +3,9 @@ using ParkingPlace.Modules.ParkingSpaces.Core.Exceptions;
 using ParkingPlace.Modules.ParkingSpaces.Shared.DTO;
 using ParkingPlace.Modules.ParkingSpaces.Core.Entities;
 using ParkingPlace.Modules.Clients.Shared;
-using ParkingPlace.Modules.ParkingSpaces.Core.Repositories;
+using static ParkingPlace.Shared.Repository.IRepository;
+using ParkingPlace.Modules.ParkingSpaces.Core.Data;
+using ParkingPlace.Shared.Databases.Postgres;
 
 namespace ParkingPlace.Modules.ParkingSpaces.Core.Services
 {
@@ -11,49 +13,49 @@ namespace ParkingPlace.Modules.ParkingSpaces.Core.Services
     {
         private readonly ILogger<ParkingSpaceService> _logger;
         private readonly IClientsModuleApi _clientsModuleApi;
-        private readonly IParkingSpaceRepository _parkingSpaceRepository;
-        private readonly IParkingSpaceReservationRepository _parkingSpaceReservationRepository;
+        private readonly IRepository<ParkingSpace> _parkingSpaceRepository;
+        private readonly IRepository<Reservation> _parkingSpaceReservationRepository;
+        private readonly IUnitOfWork<ParkingSpaceDbContext> _unitOfWork;
 
         public ParkingSpaceReservationService(
             ILogger<ParkingSpaceService> logger,
             IClientsModuleApi clientsModuleApi,
-            IParkingSpaceRepository parkingSpaceRepository,
-            IParkingSpaceReservationRepository parkingSpaceReservationRepository)
+            IUnitOfWork<ParkingSpaceDbContext> unitOfWork)
         {
             _logger = logger;
             _clientsModuleApi = clientsModuleApi;
-            _parkingSpaceRepository = parkingSpaceRepository;
-            _parkingSpaceReservationRepository = parkingSpaceReservationRepository;
+            _parkingSpaceRepository = unitOfWork.GetRepository<ParkingSpace>();
+            _parkingSpaceReservationRepository = unitOfWork.GetRepository<Reservation>();
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<Guid> Add(BookingDto booking)
-        {
+        {           
             var client = await _clientsModuleApi.GetClient(booking.ClientId);
-            var parkingSpace = await _parkingSpaceRepository.Get(booking.ParkingSpaceNumber);
+            var parkingSpace = await _parkingSpaceRepository.Get(
+                a => a.ParkingSpaceNumber == booking.ParkingSpaceNumber);
 
             if (client == null)
             {
                 throw new Exception("Client doesn't exists.");
-            }            
+            }
 
             if (parkingSpace == null)
             {
                 throw new Exception("Parking space doesn't exists.");
             }
-            
+
             await ValidateReservation(parkingSpace.Id);
+
+            parkingSpace.SetReservation();
 
             var reservationId = Guid.NewGuid();
             var reservation = new Reservation(reservationId, client.Id, booking.StartDate, booking.EndDate)
                 .Complete(parkingSpace);
-            await _parkingSpaceReservationRepository.Add(reservation);
 
-            // zrobiona jest podstawowa wersja rezerwacji
-            //
-            // TODO
-            // aktualizacja statusu miejsca postojowego (await _parkingSpaceRepository.Update(parkingSpace));
-            // dodać unit of work pattern
-            // dodanie tranzakcji
+            await _parkingSpaceReservationRepository.Add(reservation);
+            _parkingSpaceRepository.Update(parkingSpace);
+            _unitOfWork.Commit();
 
             _logger.LogInformation($"Reservation with id: '{reservationId}' has been created successfully.");
             return reservationId;
@@ -61,10 +63,11 @@ namespace ParkingPlace.Modules.ParkingSpaces.Core.Services
 
         public async Task Delete(Guid id)
         {
-            var reservation = await _parkingSpaceReservationRepository.Get(id)
+            var reservation = await _parkingSpaceReservationRepository.Get(x => x.Id == id)
                 ?? throw new ReservationNotFoundException(id);
 
-            await _parkingSpaceReservationRepository.Delete(reservation);
+            _parkingSpaceReservationRepository.Delete(reservation);
+            _unitOfWork.Commit();
 
             _logger.LogInformation($"The reservation with id: '{id}' has been deleted.");
         }
@@ -81,7 +84,7 @@ namespace ParkingPlace.Modules.ParkingSpaces.Core.Services
 
         private async Task ValidateReservation(Guid id)
         {
-            var reservation = await _parkingSpaceReservationRepository.Get(id);
+            var reservation = await _parkingSpaceReservationRepository.Get(x => x.Id == id);
             if (reservation is not null)
             {
                 throw new ReservationAlreadyExistsException(id);
@@ -93,7 +96,6 @@ namespace ParkingPlace.Modules.ParkingSpaces.Core.Services
             return new ResponseReservationDto
             {
                 Id = reservation.Id,
-                ParkingSpaceNumber = reservation.ParkingSpace.ParkingSpaceNumber,
                 ClientId = reservation.ClientId,
                 StartDate = reservation.StartDate,
                 EndDate = reservation.EndDate

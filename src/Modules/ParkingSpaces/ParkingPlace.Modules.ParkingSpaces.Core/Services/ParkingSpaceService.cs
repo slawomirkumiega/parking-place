@@ -1,20 +1,24 @@
 ﻿using Microsoft.Extensions.Logging;
-using ParkingPlace.Modules.ParkingSpaces.Core.Exceptions;
 using ParkingPlace.Modules.ParkingSpaces.Shared.DTO;
 using ParkingPlace.Modules.ParkingSpaces.Core.Entities;
-using ParkingPlace.Modules.ParkingSpaces.Core.Repositories;
+using static ParkingPlace.Shared.Repository.IRepository;
+using ParkingPlace.Modules.ParkingSpaces.Core.Data;
+using ParkingPlace.Shared.Databases.Postgres;
+using ParkingPlace.Modules.ParkingSpaces.Core.Exceptions;
 
 namespace ParkingPlace.Modules.ParkingSpaces.Core.Services
 {
     internal sealed class ParkingSpaceService : IParkingSpaceService
     {
-        private readonly IParkingSpaceRepository _parkingSpaceRepository;
+        private readonly IRepository<ParkingSpace> _parkingSpaceRepository;
         private readonly ILogger<ParkingSpaceService> _logger;
+        private readonly IUnitOfWork<ParkingSpaceDbContext> _unitOfWork;
 
-        public ParkingSpaceService(ILogger<ParkingSpaceService> logger, IParkingSpaceRepository parkingSpaceRepository)
+        public ParkingSpaceService(ILogger<ParkingSpaceService> logger, IUnitOfWork<ParkingSpaceDbContext> unitOfWork)
         {
             _logger = logger;
-            _parkingSpaceRepository = parkingSpaceRepository;
+            _parkingSpaceRepository = unitOfWork.GetRepository<ParkingSpace>();
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<Guid> Add(CreateParkingSpaceDto parkingSpaceDto)
@@ -24,6 +28,7 @@ namespace ParkingPlace.Modules.ParkingSpaces.Core.Services
             var parkingSpaceId = Guid.NewGuid();
             var parkingSpace = new ParkingSpace(parkingSpaceId, parkingSpaceDto.ParkingSpaceNumber, (Entities.PlaceStatus)parkingSpaceDto.Status);
             await _parkingSpaceRepository.Add(parkingSpace);
+            _unitOfWork.Commit();
 
             _logger.LogInformation($"Parking Space with id: '{parkingSpaceId}' has been created successfully.");
             return parkingSpaceId;
@@ -31,10 +36,12 @@ namespace ParkingPlace.Modules.ParkingSpaces.Core.Services
 
         public async Task Delete(int parkingSpaceNumber)
         {
-            var parkingSpace = await _parkingSpaceRepository.Get(parkingSpaceNumber)
+            var parkingSpace = await _parkingSpaceRepository.Get(x => x.ParkingSpaceNumber == parkingSpaceNumber)
                 ?? throw new ParkingSpaceNotFoundException(parkingSpaceNumber);
 
-            await _parkingSpaceRepository.Delete(parkingSpace);
+            _parkingSpaceRepository.Delete(parkingSpace);
+            _unitOfWork?.Commit();
+
             _logger.LogInformation($"The parking space with parking space number: " +
                 $"'{parkingSpace.ParkingSpaceNumber}' has been deleted.");
         }
@@ -51,7 +58,7 @@ namespace ParkingPlace.Modules.ParkingSpaces.Core.Services
 
         public async Task<ResponseParkingSpaceDto?> Get(int parkingSpaceNumber)
         {
-            var parkingSpace = await _parkingSpaceRepository.Get(parkingSpaceNumber);
+            var parkingSpace = await _parkingSpaceRepository.Get(x => x.ParkingSpaceNumber == parkingSpaceNumber);
 
             //
             // poniższe mapowanie MapToResponseParkingPlaceDto może zostać zastąpione autoMapperem
@@ -61,7 +68,7 @@ namespace ParkingPlace.Modules.ParkingSpaces.Core.Services
 
         private async Task ValidateParkingSpace(int parkingSpaceNumber)
         {
-            var parkingSpaces = await _parkingSpaceRepository.Get(parkingSpaceNumber);
+            var parkingSpaces = await _parkingSpaceRepository.Get(x => x.ParkingSpaceNumber == parkingSpaceNumber);
             if (parkingSpaces is not null)
             {
                 throw new ParkingSpaceAlreadyExistsException(parkingSpaceNumber);

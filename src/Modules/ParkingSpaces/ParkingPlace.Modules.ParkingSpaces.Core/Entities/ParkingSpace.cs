@@ -12,5 +12,11 @@
             ParkingSpaceNumber = parkingSpaceNumber;
             Status = status;
         }
+
+        // Tutaj mamy 2 stany. Można to zmienić na enuma w razie potrzeby i rozbudowy
+        public void SetReservation(bool status = true)
+        {
+            Status = status ? PlaceStatus.Occupied : PlaceStatus.Free;
+        }
     }
 }
